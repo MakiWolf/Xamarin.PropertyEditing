@@ -24,6 +24,10 @@ namespace Xamarin.PropertyEditing.Mac
 				IntercellSpacing = new CGSize (0, 0)
 			};
 
+			// NSTableViewStyle.FullWidth is only supported on macOS 11.0 and later
+			if (MacSystemInformation.OsVersion >= MacSystemInformation.BigSur)
+				this.propertyTable.Style = NSTableViewStyle.FullWidth;
+
 			var propertyEditors = new NSTableColumn (PropertyEditorColId);
 			this.propertyTable.AddColumn (propertyEditors);
 
@@ -129,7 +133,9 @@ namespace Xamarin.PropertyEditing.Mac
 						SelectRow (0, false);
 						this.tabbedIn = true;
 						var row = GetRowView ((nint)SelectedRows.FirstIndex, false);
-						return Window.MakeFirstResponder (row.NextValidKeyView);
+						if (row != null) {
+							return Window.MakeFirstResponder (row.NextValidKeyView);
+						}
 					}
 				}
 				this.tabbedIn = false;
@@ -151,8 +157,7 @@ namespace Xamarin.PropertyEditing.Mac
 		private void OnPropertiesChanged (object sender, EventArgs e)
 		{
 			this.propertyTable.ReloadData ();
-
-			((PropertyTableDelegate)this.propertyTable.Delegate).UpdateExpansions (this.propertyTable);
+			UpdateExpansions ();
 		}
 
 		private void UpdateResourceProvider ()

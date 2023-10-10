@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using AppKit;
 using Foundation;
+using ObjCRuntime;
 
 namespace Xamarin.PropertyEditing.Mac
 {
@@ -16,8 +17,14 @@ namespace Xamarin.PropertyEditing.Mac
 
 		public HostResourceProvider ()
 		{
-			var containingDir = Path.GetDirectoryName (typeof (HostResourceProvider).Assembly.Location);
-			var bundlePath = Path.Combine (containingDir, "PropertyEditingResource.bundle");
+			var bundlePath = NSBundle.MainBundle.PathForResource ("PropertyEditingResource", "bundle");
+			if (!Directory.Exists (bundlePath))
+			{
+				//if the bundle resource directory is not in place we fallback into the assembly location
+				var containingDir = Path.GetDirectoryName (typeof (HostResourceProvider).Assembly.Location);
+				bundlePath = Path.Combine (containingDir, "PropertyEditingResource.bundle");
+			}
+			
 			this.resourceBundle = new NSBundle (bundlePath);
 		}
 

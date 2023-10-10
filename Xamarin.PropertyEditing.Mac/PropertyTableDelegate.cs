@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using AppKit;
 using Foundation;
+using ObjCRuntime;
 
 using Xamarin.PropertyEditing.ViewModels;
 
@@ -59,12 +60,6 @@ namespace Xamarin.PropertyEditing.Mac
 
 				((UnfocusableTextField)categoryContainer.Subviews[1]).StringValue = group.Category;
 
-				if (this.dataSource.DataContext.GetIsExpanded (group.Category)) {
-					SynchronizationContext.Current.Post (s => {
-						outlineView.ExpandItem (item);
-					}, null);
-				}
-
 				return categoryContainer;
 			}
 
@@ -89,14 +84,8 @@ namespace Xamarin.PropertyEditing.Mac
 
 			if (editor != null) {
 				var ovm = evm as ObjectPropertyViewModel;
-				if (ovm != null && editorOrContainer is EditorContainer container) {
-					if (container.LeftEdgeView == null) {
-						if (ovm.CanDelve)
-							container.LeftEdgeView = outlineView.MakeView ("NSOutlineViewDisclosureButtonKey", outlineView);
-					} else if (!ovm.CanDelve) {
-						container.LeftEdgeView = null;
-					}
-				} else if (!(editorOrContainer is EditorContainer)) {
+
+				if (!(editorOrContainer is EditorContainer)) {
 					editor.ViewModel = evm;
 				}
 
@@ -127,20 +116,16 @@ namespace Xamarin.PropertyEditing.Mac
 
 		public override void ItemDidExpand (NSNotification notification)
 		{
+			if (this.isUpdatingExpansions)
+				return;
+
 			NSObjectFacade facade = notification.UserInfo.Values[0] as NSObjectFacade;
 			var outline = (NSOutlineView)notification.Object;
 			nint row = outline.RowForItem (facade);
 
-			if (this.isUpdatingExpansions) {
-				NSView view = outline.GetView (0, row, makeIfNecessary: true);
-				if (view.Subviews[0] is NSButton expander)
-					expander.State = NSCellStateValue.On;
-
-				return;
-			}
-
-			if (facade.Target is PanelGroupViewModel group)
+			if (facade.Target is PanelGroupViewModel group) {
 				this.dataSource.DataContext.SetIsExpanded (group.Category, isExpanded: true);
+			}
 			else if (facade.Target is ObjectPropertyViewModel ovm) {
 				NSView view = outline.GetView (0, row, makeIfNecessary: false);
 				SetRowValueBackground (view, valueBackground: true);
@@ -149,17 +134,12 @@ namespace Xamarin.PropertyEditing.Mac
 
 		public override void ItemDidCollapse (NSNotification notification)
 		{
+			if (this.isUpdatingExpansions)
+				return;
+
 			NSObjectFacade facade = notification.UserInfo.Values[0] as NSObjectFacade;
 			var outline = (NSOutlineView)notification.Object;
 			nint row = outline.RowForItem (facade);
-
-			if (this.isUpdatingExpansions) {
-				NSView view = outline.GetView (0, row, makeIfNecessary: true);
-				if (view.Subviews[0] is NSButton expander)
-					expander.State = NSCellStateValue.Off;
-
-				return;
-			}
 
 			if (facade.Target is PanelGroupViewModel group)
 				this.dataSource.DataContext.SetIsExpanded (group.Category, isExpanded: false);
@@ -190,7 +170,12 @@ namespace Xamarin.PropertyEditing.Mac
 				registration = new EditorRegistration ();
 
 				if (cellIdentifier == nameof (PanelHeaderEditorControl)) {
-					registration.RowSize = 54;
+					if (this.dataSource?.DataContext is PanelViewModel panelView && !panelView.IsObjectNameable) {
+						registration.RowSize = 26;
+					}
+					else {
+						registration.RowSize = 54;
+					}
 				} else {
 					NSView editorOrContainer = GetEditor (cellIdentifier, vm, outlineView);
 					IEditorView view = ((editorOrContainer as EditorContainer)?.EditorView) ?? editorOrContainer as IEditorView;
@@ -211,7 +196,11 @@ namespace Xamarin.PropertyEditing.Mac
 				this.registrations[cellIdentifier] = registration;
 			}
 
-			return registration.GetHeight (vm);
+			// The double cast below is needed for now, while the return value is type ObjCRuntime.nfloat
+			// in order for the integral to floating point conversion to work properly. Later when ObjCRuntime.nfloat
+			// is replaced with System.Runtime.InteropServices.NFloat that won't be needed (but can't hurt).
+			nfloat rowHeight = (nfloat)(double)registration.GetHeight (vm);
+			return rowHeight;
 		}
 
 		private class EditorRegistration
